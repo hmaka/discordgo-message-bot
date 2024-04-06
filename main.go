@@ -1,12 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -14,23 +14,29 @@ import (
 )
 
 func launchWebServer(msg_channel <-chan string) {
-	messages := make([]string, 0)
+	//messages := make([]string, 0)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		home(w, r, &messages)
+		home(w, r, msg_channel)
 	})
 
-	go func(msg_channel <-chan string, messages *[]string) {
-		for msg := range msg_channel {
-			*messages = append(*messages, msg)
-		}
-	}(msg_channel, &messages)
+	server := &http.Server{Addr: ":8080", Handler: mux}
+
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+
+	go func() {
+		<-sc
+		log.Println("Shutting down server...")
+		server.Shutdown(context.Background())
+	}()
 
 	log.Println("Starting server on :8080")
-	err := http.ListenAndServe(":8080", mux)
-	log.Fatal(err)
-	panic(err)
+	err := server.ListenAndServe()
+	if err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }
 
 func main() {
@@ -79,8 +85,25 @@ func main() {
 	dg.Close()
 
 }
-func home(w http.ResponseWriter, r *http.Request, messages *[]string) {
-	w.Write([]byte(strings.Join(*messages, "\n")))
+func home(w http.ResponseWriter, r *http.Request, msg_channel <-chan string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	defer func() {
+		w.Write([]byte("event: close\ndata: Closing connection\n\n"))
+		w.(http.Flusher).Flush()
+	}()
+
+	for msg := range msg_channel {
+		// Send event to the client
+		w.Write([]byte(msg + "\n\n"))
+
+		// Flush the response writer to send the event immediately
+		w.(http.Flusher).Flush()
+
+	}
+
 }
 
 // This function will be called (due to AddHandler above) every time a new
@@ -95,5 +118,5 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, msg_channel
 	println(m.Content)
 
 	// code to send message through channel to webserver
-	msg_channel <- m.Content
+	msg_channel <- m.Author.GlobalName + ": " + m.Content
 }
