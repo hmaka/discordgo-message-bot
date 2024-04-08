@@ -13,40 +13,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func launchWebServer(msg_channel <-chan string) {
-	//messages := make([]string, 0)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		home(w, r, msg_channel)
-	})
-
-	server := &http.Server{Addr: ":8080", Handler: mux}
-
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-
-	go func() {
-		<-sc
-		log.Println("Shutting down server...")
-		server.Shutdown(context.Background())
-	}()
-
-	log.Println("Starting server on :8080")
-	err := server.ListenAndServe()
-	if err != http.ErrServerClosed {
-		log.Fatal(err)
-	}
-}
-
 func main() {
 	// Register the two new handler functions and corresponding URL patterns with
 	// the servemux, in exactly the same way that we did before.
 
-	msg_channel := make(chan string)
-	defer close(msg_channel)
+	pubsub := Newpubsub()
 
-	go launchWebServer(msg_channel)
+	defer pubsub.close()
+
+	go launchWebServer(&pubsub)
 
 	err := godotenv.Load(".env")
 	if err != nil {
@@ -62,7 +37,7 @@ func main() {
 
 	// Register the messageCreate func as a callback for MessageCreate events.
 	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		messageCreate(s, m, msg_channel)
+		messageCreate(s, m, &pubsub)
 	})
 
 	// In this example, we only care about receiving message events.
@@ -84,6 +59,32 @@ func main() {
 	// Cleanly close down the Discord session.
 	dg.Close()
 
+}
+
+func launchWebServer(pubsub *Pubsub) {
+	//messages := make([]string, 0)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		home(w, r, pubsub.subscribe())
+	})
+
+	server := &http.Server{Addr: ":8080", Handler: mux}
+
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+
+	go func() {
+		<-sc
+		log.Println("Shutting down server...")
+		server.Shutdown(context.Background())
+	}()
+
+	log.Println("Starting server on :8080")
+	err := server.ListenAndServe()
+	if err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }
 func home(w http.ResponseWriter, r *http.Request, msg_channel <-chan string) {
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -108,7 +109,7 @@ func home(w http.ResponseWriter, r *http.Request, msg_channel <-chan string) {
 
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the authenticated bot has access to.
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, msg_channel chan<- string) {
+func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, pubsub *Pubsub) {
 
 	// Ignore all messages created by the bot itself
 	// This isn't required in this specific example but it's a good practice.
@@ -118,5 +119,5 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, msg_channel
 	println(m.Content)
 
 	// code to send message through channel to webserver
-	msg_channel <- m.Author.GlobalName + ": " + m.Content
+	pubsub.notifyAll(m.Author.GlobalName + ": " + m.Content)
 }
