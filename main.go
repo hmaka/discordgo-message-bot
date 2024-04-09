@@ -15,18 +15,18 @@ import (
 
 func main() {
 	// Register the two new handler functions and corresponding URL patterns with
-
-	pubsub := Newpubsub()
-
-	defer pubsub.close()
-
-	go launchWebServer(&pubsub)
-
 	err := godotenv.Load(".env")
 	if err != nil {
 		fmt.Println("Error loading .env file:", err)
 	}
 	Token := os.Getenv("DISCORD_TOKEN")
+	Port := os.Getenv("PORT")
+
+	pubsub := Newpubsub()
+
+	defer pubsub.close()
+
+	go launchWebServer(&pubsub, Port)
 
 	// Create a new Discord session using the provided bot token.
 	dg, err := discordgo.New("Bot " + Token)
@@ -60,14 +60,14 @@ func main() {
 
 }
 
-func launchWebServer(pubsub *Pubsub) {
+func launchWebServer(pubsub *Pubsub, port string) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		home(w, r, pubsub.subscribe())
 	})
 
-	server := &http.Server{Addr: ":8080", Handler: mux}
+	server := &http.Server{Addr: ":" + port, Handler: mux}
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
