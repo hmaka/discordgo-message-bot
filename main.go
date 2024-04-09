@@ -15,7 +15,6 @@ import (
 
 func main() {
 	// Register the two new handler functions and corresponding URL patterns with
-	// the servemux, in exactly the same way that we did before.
 
 	pubsub := Newpubsub()
 
@@ -28,6 +27,7 @@ func main() {
 		fmt.Println("Error loading .env file:", err)
 	}
 	Token := os.Getenv("DISCORD_TOKEN")
+
 	// Create a new Discord session using the provided bot token.
 	dg, err := discordgo.New("Bot " + Token)
 	if err != nil {
@@ -40,7 +40,6 @@ func main() {
 		messageCreate(s, m, &pubsub)
 	})
 
-	// In this example, we only care about receiving message events.
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
 
 	// Open a websocket connection to Discord and begin listening.
@@ -62,7 +61,6 @@ func main() {
 }
 
 func launchWebServer(pubsub *Pubsub) {
-	//messages := make([]string, 0)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +93,8 @@ func home(w http.ResponseWriter, r *http.Request, msg_channel <-chan string) {
 		w.Write([]byte("event: close\ndata: Closing connection\n\n"))
 		w.(http.Flusher).Flush()
 	}()
+	w.Write([]byte("Instructions:\nJoin the following discord sever and type a message to see it streamed here.\nLink:https://discord.gg/f8uSNHEqtC\n\n"))
+	w.(http.Flusher).Flush()
 
 	for msg := range msg_channel {
 		// Send event to the client
@@ -112,7 +112,6 @@ func home(w http.ResponseWriter, r *http.Request, msg_channel <-chan string) {
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, pubsub *Pubsub) {
 
 	// Ignore all messages created by the bot itself
-	// This isn't required in this specific example but it's a good practice.
 	if m.Author.ID == s.State.User.ID {
 		return
 	}

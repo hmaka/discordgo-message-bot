@@ -30,9 +30,3 @@ func (p Pubsub) close() {
 		close(ch)
 	}
 }
-
-func threadRun(ch <-chan string) {
-	for msg := range ch {
-		println(msg)
-	}
-}
